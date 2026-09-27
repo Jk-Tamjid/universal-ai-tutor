@@ -6,7 +6,7 @@ import edge_tts
 import pypdf
 import numpy as np
 import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend for headless cloud hosting
+matplotlib.use('Agg')  # Headless backend for web server compatibility
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.animation import PillowWriter
@@ -26,22 +26,25 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------
-# 2. Custom CSS Styling
+# 2. Modern Glassmorphism CSS Styling
 # ---------------------------------------------------------
 st.markdown("""
 <style>
+    /* Dark Radial Gradient Background */
     .stApp {
         background: radial-gradient(circle at top left, #1e1b4b, #0f172a 60%, #020617 100%);
         color: #f8fafc;
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
 
+    /* Sidebar Styling */
     section[data-testid="stSidebar"] {
         background-color: rgba(15, 23, 42, 0.65) !important;
         backdrop-filter: blur(16px);
         border-right: 1px solid rgba(255, 255, 255, 0.08);
     }
 
+    /* Gradient Header Typography */
     .main-header {
         font-size: 2.3rem;
         font-weight: 800;
@@ -57,6 +60,7 @@ st.markdown("""
         margin-bottom: 1.5rem;
     }
 
+    /* Chat Messages Glass Container */
     div[data-testid="stChatMessage"] {
         background-color: rgba(30, 41, 59, 0.45) !important;
         backdrop-filter: blur(10px);
@@ -64,6 +68,7 @@ st.markdown("""
         border-radius: 16px !important;
         padding: 1.25rem !important;
         margin-bottom: 1rem !important;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3) !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -72,12 +77,12 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # ---------------------------------------------------------
-# 3. Sidebar & API Secrets Setup
+# 3. Sidebar Configuration & API Setup
 # ---------------------------------------------------------
 final_api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
 
 if not final_api_key:
-    st.error("⚠️ Gemini API Key missing! Set `GEMINI_API_KEY` in Streamlit Cloud Secrets.")
+    st.error("⚠️ Gemini API Key missing! Please set `GEMINI_API_KEY` in Streamlit Cloud Secrets.")
     st.stop()
 
 client = genai.Client(api_key=final_api_key)
@@ -94,23 +99,23 @@ with st.sidebar:
     enable_audio = st.checkbox("🔊 Voice Assistant Response", value=True)
 
 # ---------------------------------------------------------
-# System Prompt
+# 4. Strict System Instruction & Format Constraints
 # ---------------------------------------------------------
 SYSTEM_INSTRUCTION = (
     "You are an elite AI Academic Visual Tutor focused on 100% FACTUAL AND MATHEMATICAL ACCURACY.\n\n"
+    "CRITICAL RULE FOR VISUALS & ANIMATIONS:\n"
+    "- NEVER state or claim that you cannot generate images, plots, or animations.\n"
+    "- ALWAYS generate executable Python code when asked to draw, plot, visualize, or animate.\n"
+    "- For static plots, output ONLY Python code inside ```python_plot ... ```.\n"
+    "- For animations/videos, output ONLY Python code inside ```python_video ... ```.\n\n"
     "ACCURACY & REASONING RULES:\n"
     "- Double-check all formulas and calculations step-by-step before answering.\n"
     "- Never make assumptions. State clear step-by-step logic.\n\n"
     "CRITICAL LANGUAGE RULES:\n"
     f"- Target Language: {target_language}.\n"
     "- If set to 'Auto-detect / Universal Match', respond in the user's exact input language.\n\n"
-    "GRAPH & ANIMATION RULES:\n"
-    "- DO NOT generate graphs/animations unless explicitly requested.\n"
-    "- For static plots, wrap Python code inside ```python_plot ... ```.\n"
-    "- Set plot figures to compact dimensions: plt.figure(figsize=(6, 3.5)).\n"
-    "- For animated videos, wrap code inside ```python_video ... ```.\n\n"
-    "ANIMATION SAVING REQUIREMENT:\n"
-    "You MUST import PillowWriter and save the animation using explicitly defined PillowWriter:\n"
+    "ANIMATION CODE STRUCTURE REQUIREMENT:\n"
+    "You MUST import PillowWriter and save the animation as 'output_animation.gif':\n"
     "```python_video\n"
     "import numpy as np\n"
     "import matplotlib.pyplot as plt\n"
@@ -133,7 +138,7 @@ SYSTEM_INSTRUCTION = (
 )
 
 # ---------------------------------------------------------
-# 4. Neural Audio Engine
+# 5. Multilingual Neural Audio Engine
 # ---------------------------------------------------------
 def detect_language_script_and_get_voice(text: str) -> str:
     if re.search(r'[\u0980-\u09FF]', text):
@@ -165,15 +170,24 @@ async def generate_neural_audio(text: str) -> str:
     return temp_file.name
 
 # ---------------------------------------------------------
-# 5. Dynamic Plot & Video Execution Engines
+# 6. Dynamic Code Execution Engines (With Auto-Correction)
 # ---------------------------------------------------------
+def sanitize_python_code(code_str: str) -> str:
+    # Auto-correct common Matplotlib method casing mistakes from LLM output
+    code_str = re.sub(r'\bset_Ylim\b', 'set_ylim', code_str)
+    code_str = re.sub(r'\bset_Xlim\b', 'set_xlim', code_str)
+    code_str = re.sub(r'\bset_Xlabel\b', 'set_xlabel', code_str)
+    code_str = re.sub(r'\bset_Ylabel\b', 'set_ylabel', code_str)
+    code_str = re.sub(r'\bset_Title\b', 'set_title', code_str)
+    return code_str
+
 def execute_and_render_plot(code_str: str):
     try:
+        code_str = sanitize_python_code(code_str)
         fig = plt.figure(figsize=(6, 3.5), facecolor='#0f172a')
         local_scope = {"plt": plt, "np": np, "fig": fig}
         exec(code_str, {}, local_scope)
         
-        # Center column container to prevent full-width stretching
         col1, col2, col3 = st.columns([1, 4, 1])
         with col2:
             if "fig" in local_scope:
@@ -186,6 +200,7 @@ def execute_and_render_plot(code_str: str):
 
 def execute_and_render_video(code_str: str):
     try:
+        code_str = sanitize_python_code(code_str)
         output_file = 'output_animation.gif'
         if os.path.exists(output_file):
             os.remove(output_file)
@@ -210,7 +225,7 @@ def execute_and_render_video(code_str: str):
         st.warning(f"Could not render video animation: {str(e)}")
 
 # ---------------------------------------------------------
-# 6. Message Renderer
+# 7. Unified Message Renderer
 # ---------------------------------------------------------
 def render_assistant_message(content: str, audio_path: str = None):
     clean_text = re.sub(r'```python_video.*?```', '', content, flags=re.DOTALL)
@@ -230,7 +245,7 @@ def render_assistant_message(content: str, audio_path: str = None):
         st.audio(audio_path, format="audio/mp3")
 
 # ---------------------------------------------------------
-# 7. UI Layout & History
+# 8. Main App UI Layout
 # ---------------------------------------------------------
 st.markdown('<div class="main-header">🎓 Universal AI Visual Tutor</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">Accurate Explanations with Voice & Animated Concepts</div>', unsafe_allow_html=True)
@@ -243,7 +258,7 @@ for message in st.session_state.messages:
             st.markdown(message["content"])
 
 # ---------------------------------------------------------
-# 8. User Inputs
+# 9. User Input Handling
 # ---------------------------------------------------------
 uploaded_file = st.file_uploader("📸 Upload Image or PDF (Optional):", type=["jpg", "jpeg", "png", "pdf"])
 
@@ -255,7 +270,7 @@ with col_mic:
     mic_audio = st.audio_input("🎙️")
 
 # ---------------------------------------------------------
-# 9. Response Processing Engine
+# 10. Execution Engine
 # ---------------------------------------------------------
 if user_input or uploaded_file or mic_audio:
     contents = []
